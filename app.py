@@ -78,25 +78,25 @@ def background_thread():
 
 
             if "1-0:1.8.1" in line:
-                parsed_line = "verbuik totaal dal: %s"% float(line[10:20])
+                parsed_line = "verbuik totaal dal: %s"% (line[10:20])
                 db.Put('%s/usage_total_low'%prefix,(line[10:20]))
             elif "1-0:1.8.2" in line:
-                parsed_line = "verbruik totaal piek: %s"% float(line[10:20])
+                parsed_line = "verbruik totaal piek: %s"% (line[10:20])
                 db.Put('%s/usage_total_high'%prefix,(line[10:20]))
             elif "1-0:2.8.1" in line:
-                parsed_line = "teruggeleverd dal: %s"% float(line[10:20])
+                parsed_line = "teruggeleverd dal: %s"% (line[10:20])
                 db.Put('%s/returned_total_low'%prefix,(line[10:20]))
             elif "1-0:2.8.2" in line:
-                parsed_line = "teruggeleverd piek: %s"% float(line[10:20])
+                parsed_line = "teruggeleverd piek: %s"% (line[10:20])
                 db.Put('%s/returned_total_high'%prefix,(line[10:20]))
             elif "1-0:1.7.0" in line:
-                parsed_line = "verbruik huidig: %s"% float(line[10:16])
+                parsed_line = "verbruik huidig: %s"% (line[10:16])
                 db.Put('%s/usage_current'%prefix,(line[10:16]))
             elif "1-0:2.7.0" in line:
-                parsed_line = "teruggeleverd huidig: %s"% float(line[10:16])
+                parsed_line = "teruggeleverd huidig: %s"% (line[10:16])
                 db.Put('%s/returned_current'%prefix,(line[10:16]))
             elif  "0-1:24.2.1" in line:
-                parsed_line = "verbruik totaal Gas: %s"% float(line[26:35])
+                parsed_line = "verbruik totaal Gas: %s"% (line[26:35])
                 db.Put('%s/gas_usage_total'%prefix, (line[26:35]))
             else:
                 pass
@@ -107,9 +107,11 @@ def background_thread():
                 #         {'data': parsed_line, 'count': "key %s" % localtime},
                 #         namespace='/test')
         else:
-    	    for item in db.RangeIter(key_from = 'last', key_to = 'last//'):
-                emit('my response',
-                    {'data': item[1], 'count': item[0]})
+    	    for item in db.RangeIter(key_from = 'last', key_to = 'last~'):
+                socketio.emit('my response',
+                    {'data': item[1], 'count': item[0]},
+                    namespace='/test')
+)
 
 
 @app.route('/')

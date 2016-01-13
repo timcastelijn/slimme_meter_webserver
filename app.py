@@ -46,6 +46,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, async_mode=async_mode)
 thread = None
+db = None
 
 def background_thread():
     """Example of how to send server generated events to clients."""
@@ -53,6 +54,7 @@ def background_thread():
     #ser = serial.Serial("/dev/tty.usbserial-A932INF", 115200)
 
     # create database
+    global db
     db = leveldb.LevelDB('./db')
 
     # wiat a bit
@@ -63,21 +65,51 @@ def background_thread():
     count = 0
     while True:
 
-        count += 1
+        line = ser.readline()
 
-        char =ser.read()
+        count = count + 1
+        if line:
 
-        if char:
-            p1_raw = p1_raw + char
+            parsed_line = None
+            localtime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+
+            line = line.strip()
+            prefix = 'last'
+
+
+            if "1-0:1.8.1" in line:
+                parsed_line = "verbuik totaal dal: %s"% float(line[10:20])
+                db.Put('%s/usage_total_low'%prefix,(line[10:20]))
+            elif "1-0:1.8.2" in line:
+                parsed_line = "verbruik totaal piek: %s"% float(line[10:20])
+                db.Put('%s/usage_total_high'%prefix,(line[10:20]))
+            elif "1-0:2.8.1" in line:
+                parsed_line = "teruggeleverd dal: %s"% float(line[10:20])
+                db.Put('%s/returned_total_low'%prefix,(line[10:20]))
+            elif "1-0:2.8.2" in line:
+                parsed_line = "teruggeleverd piek: %s"% float(line[10:20])
+                db.Put('%s/returned_total_high'%prefix,(line[10:20]))
+            elif "1-0:1.7.0" in line:
+                parsed_line = "verbruik huidig: %s"% float(line[10:16])
+                db.Put('%s/usage_current'%prefix,(line[10:16]))
+            elif "1-0:2.7.0" in line:
+                parsed_line = "teruggeleverd huidig: %s"% float(line[10:16])
+                db.Put('%s/returned_current'%prefix,(line[10:16]))
+            elif  "0-1:24.2.1" in line:
+                parsed_line = "verbruik totaal Gas: %s"% float(line[26:35])
+                db.Put('%s/gas_usage_total'%prefix, (line[26:35]))
+            else:
+                pass
+
+            if parsed_line:
+                print parsed_line
+                # socketio.emit('my response',
+                #         {'data': parsed_line, 'count': "key %s" % localtime},
+                #         namespace='/test')
         else:
-
-            localtime = time.asctime( time.localtime(time.time()) )
-
-            db.Put("key %s" % localtime, p1_raw)
-            socketio.emit('my response',
-                      {'data': p1_raw, 'count': "key %s" % localtime},
-                      namespace='/test')
-            p1_raw = ""
+    	    for item in db.RangeIter(key_from = 'last', key_to = 'last//'):
+                emit('my response',
+                    {'data': item[1], 'count': item[0]})
 
 
 @app.route('/')
@@ -86,9 +118,10 @@ def index():
 
 @socketio.on('my event', namespace='/test')
 def test_message(message):
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': message['data'], 'count': session['receive_count']})
+    global db
+    for item in db.RangeIter():
+        emit('my response',
+                {'data': item[1], 'count': item[0]})
 
 
 @socketio.on('my broadcast event', namespace='/test')
@@ -142,7 +175,10 @@ def disconnect_request():
 
 @socketio.on('connect', namespace='/test')
 def test_connect():
-    emit('my response', {'data': 'Connected', 'count': 0})
+    global db
+    for item in db.RangeIter(key_from = 'last', key_to = 'last//'):
+        emit('my response',
+                {'data': item[1], 'count': item[0]})
 
 
 @socketio.on('disconnect', namespace='/test')

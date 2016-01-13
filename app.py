@@ -49,7 +49,7 @@ thread = None
 
 def background_thread():
     """Example of how to send server generated events to clients."""
-    ser = serial.Serial("/dev/ttyUSB0", 115200)
+    ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=5)
     #ser = serial.Serial("/dev/tty.usbserial-A932INF", 115200)
 
     # create database
@@ -58,23 +58,30 @@ def background_thread():
     # wiat a bit
     time.sleep(4)
 
+    p1_raw = "/n"
+
     count = 0
     while True:
+
         count += 1
-        p1_raw = ser.readline()
-        db.Put("key"+str(count), p1_raw)
-        socketio.emit('my response',
-                      {'data': p1_raw, 'count': count},
+
+        char =ser.read()
+
+        if char:
+            p1_raw = p1_raw + char
+        else:
+
+            localtime = time.asctime( time.localtime(time.time()) )
+
+            db.Put("key %s" % localtime, p1_raw)
+            socketio.emit('my response',
+                      {'data': p1_raw, 'count': "key %s" % localtime},
                       namespace='/test')
+            p1_raw = ""
 
 
 @app.route('/')
 def index():
-    global thread
-    if thread is None:
-        thread = Thread(target=background_thread)
-        thread.daemon = True
-        thread.start()
     return render_template('index.html')
 
 @socketio.on('my event', namespace='/test')
@@ -144,4 +151,10 @@ def test_disconnect():
 
 
 if __name__ == '__main__':
+    global thread
+    if thread is None:
+        thread = Thread(target=background_thread)
+        thread.daemon = True
+        thread.start()
+
     socketio.run(app, host='0.0.0.0', debug=True)

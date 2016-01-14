@@ -41,6 +41,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room, \
 
 import serial
 import leveldb
+import re
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -61,13 +62,10 @@ def background_thread():
     time.sleep(4)
 
     p1_raw = "/n"
-
-    count = 0
     while True:
 
         line = ser.readline()
 
-        count = count + 1
         if line:
 
             parsed_line = None
@@ -78,8 +76,11 @@ def background_thread():
 
 
             if "1-0:1.8.1" in line:
-                parsed_line = "verbuik totaal dal: %s"% (line[10:20])
-                db.Put('%s/usage_total_low'%prefix,(line[10:20]))
+                value = re.search("\(([0-9.]+)\*k", line).group(1)
+		if value:
+		     print float(value)
+   	             parsed_line = "verbuik totaal dal: %s" % value
+   	             db.Put('%s/usage_total_low'%prefix,value)
             elif "1-0:1.8.2" in line:
                 parsed_line = "verbruik totaal piek: %s"% (line[10:20])
                 db.Put('%s/usage_total_high'%prefix,(line[10:20]))
@@ -90,11 +91,15 @@ def background_thread():
                 parsed_line = "teruggeleverd piek: %s"% (line[10:20])
                 db.Put('%s/returned_total_high'%prefix,(line[10:20]))
             elif "1-0:1.7.0" in line:
-                parsed_line = "verbruik huidig: %s"% (line[10:16])
-                db.Put('%s/usage_current'%prefix,(line[10:16]))
+                value = re.search("\(([0-9.]+)\*k", line)
+                if value and value.group(1):
+	                parsed_line = "verbruik huidig: %s"% value.group(1)
+        	        db.Put('%s/usage_current'%prefix,value.group(1) )
             elif "1-0:2.7.0" in line:
-                parsed_line = "teruggeleverd huidig: %s"% (line[10:16])
-                db.Put('%s/returned_current'%prefix,(line[10:16]))
+                value = re.search("\(([0-9.]+)\*k", line)
+		if value and value.group(1):
+                	parsed_line = "teruggeleverd huidig: %s" % value.group(1)
+                	db.Put('%s/returned_current'%prefix,value.group(1) )
             elif  "0-1:24.2.1" in line:
                 parsed_line = "verbruik totaal Gas: %s"% (line[26:35])
                 db.Put('%s/gas_usage_total'%prefix, (line[26:35]))
@@ -103,15 +108,18 @@ def background_thread():
 
             if parsed_line:
                 print parsed_line
-                # socketio.emit('my response',
-                #         {'data': parsed_line, 'count': "key %s" % localtime},
-                #         namespace='/test')
+
         else:
+	    print 'dump last data'
+	    response = {}
     	    for item in db.RangeIter(key_from = 'last', key_to = 'last~'):
-                socketio.emit('my response',
-                    {'data': item[1], 'count': item[0]},
-                    namespace='/test')
-)
+            	print item
+		key = item[0].split('/')[-1]
+		response[key] = item[1]
+	
+	    socketio.emit('my response', 
+		{'data': response, 'count': item[0]},
+                namespace='/test')
 
 
 @app.route('/')
@@ -120,11 +128,7 @@ def index():
 
 @socketio.on('my event', namespace='/test')
 def test_message(message):
-    global db
-    for item in db.RangeIter():
-        emit('my response',
-                {'data': item[1], 'count': item[0]})
-
+    print 'my event'
 
 @socketio.on('my broadcast event', namespace='/test')
 def test_broadcast_message(message):
@@ -178,9 +182,14 @@ def disconnect_request():
 @socketio.on('connect', namespace='/test')
 def test_connect():
     global db
-    for item in db.RangeIter(key_from = 'last', key_to = 'last//'):
-        emit('my response',
-                {'data': item[1], 'count': item[0]})
+
+    response = {}
+    for item in db.RangeIter(key_from = 'last', key_to = 'last~'):
+        print item
+        response[item[0]] = item[1]
+
+    emit('my response',
+            {'data': response, 'count': item[0]})
 
 
 @socketio.on('disconnect', namespace='/test')
@@ -196,3 +205,4 @@ if __name__ == '__main__':
         thread.start()
 
     socketio.run(app, host='0.0.0.0', debug=True)
+

@@ -24,6 +24,14 @@ if async_mode is None:
 
     print('async_mode is ' + async_mode)
 
+# function to return the number using regex
+def getValue(line):
+    try:
+        value = re.search("\(([0-9.]+)\*", line).group(1)
+        return value
+    except:
+        return None
+
 # monkey patching is necessary because this application uses a background
 # thread
 if async_mode == 'eventlet':
@@ -49,10 +57,20 @@ socketio = SocketIO(app, async_mode=async_mode)
 thread = None
 db = None
 
+codes = [
+    {'code':'1-0:1.8.1',    'name':'afname totaal dal',   'id':'usage_total_low',     'unit': 'kWh'},
+    {'code':'1-0:1.8.2',    'name': 'afname totaal piek',  'id':'usage_total_high',    'unit': 'kWh'},
+    {'code':'1-0:2.8.1',    'name': 'teruggeleverd dal',   'id':'returned_total_high', 'unit': 'kWh'},
+    {'code':'1-0:2.8.2',    'name': 'teruggeleverd piek',  'id':'returned_total_low',  'unit': 'kWh'},
+    {'code':'1-0:1.7.0',    'name': 'verbruik huidig',     'id':'usage_current',       'unit': 'kW'},
+    {'code':'1-0:2.7.0',    'name': 'teruggeleverd huidig','id':'returned_current',    'unit': 'kW'},
+    {'code':'0-1:24.2.1',   'name': 'verbruik totaal Gas', 'id':'usage_total_gas',     'unit': 'm3'},
+]
+
 def background_thread():
     """Example of how to send server generated events to clients."""
-    ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=5)
-    #ser = serial.Serial("/dev/tty.usbserial-A932INF", 115200)
+    # ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=5)
+    ser = serial.Serial("/dev/tty.usbserial-A1014RK3", 115200, timeout=5)
 
     # create database
     global db
@@ -66,69 +84,39 @@ def background_thread():
     while True:
 
         line = ser.readline()
-	store_values = False
-	
+        store_values = False
+        localtime = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+
         if line:
 
-            parsed_line = None
-            localtime = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
-            line = line.strip()
-            prefix = 'last'
-	
-	    if (last_save + 1800)>time.clock():
-		store_values = True
-		last_save = time.clock()
+            if (time.time() > last_save + 30):
+                store_values = True
+                last_save = time.time()
+                print "save"
 
-            if "1-0:1.8.1" in line:
-                value = re.search("\(([0-9.]+)\*k", line).group(1)
-		if value:
-   	             parsed_line = "verbuik totaal dal: %s" % value
-   	             db.Put('%s/usage_total_low'%prefix,value)
-		     if store_values:
-                        db.Put('data/usage_total_low/%s'%localtime,value)
-            elif "1-0:1.8.2" in line:
-                value = re.search("\(([0-9.]+)\*k", line).group(1)
-                if value:
-                     parsed_line = "verbruik totaal piek: %s"% value
-                     db.Put('%s/usage_total_high'%prefix,value)
-                     if store_values:
-                        db.Put('data/usage_total_high/%s'%localtime,value)
-            elif "1-0:2.8.1" in line:
-                parsed_line = "teruggeleverd dal: %s"% (line[10:20])
-                db.Put('%s/returned_total_low'%prefix,(line[10:20]))
-            elif "1-0:2.8.2" in line:
-                parsed_line = "teruggeleverd piek: %s"% (line[10:20])
-                db.Put('%s/returned_total_high'%prefix,(line[10:20]))
-            elif "1-0:1.7.0" in line:
-                value = re.search("\(([0-9.]+)\*k", line)
-                if value and value.group(1):
-	                parsed_line = "verbruik huidig: %s"% value.group(1)
-        	        db.Put('%s/usage_current'%prefix,value.group(1) )
-            elif "1-0:2.7.0" in line:
-                value = re.search("\(([0-9.]+)\*k", line)
-		if value and value.group(1):
-                	parsed_line = "teruggeleverd huidig: %s" % value.group(1)
-                	db.Put('%s/returned_current'%prefix,value.group(1) )
-            elif  "0-1:24.2.1" in line:
-                parsed_line = "verbruik totaal Gas: %s"% (line[26:35])
-                db.Put('%s/gas_usage_total'%prefix, (line[26:35]))
-            else:
-                pass
-
-            if parsed_line:
-                print parsed_line
+            for table in codes:
+                if table['code'] in line:
+                    value = getValue(line)
+                    print value
+                    if value:
+                        db.Put('last/%s'%table['id'], value)
+                        if store_values:
+                            db.Put('data/%s/%s'%(table['id'], localtime),value)
+                else:
+                    pass
 
         else:
-	    print 'dump last data'
-	    response = {}
+
+            print 'print values from db %s'%localtime
+            response = {}
     	    for item in db.RangeIter(key_from = 'last', key_to = 'last~'):
-            	print item
-		key = item[0].split('/')[-1]
-		response[key] = item[1]
-	
-	    socketio.emit('my response', 
-		{'data': response, 'count': item[0]},
+                print item
+                key = item[0].split('/')[-1]
+                response[key] = item[1]
+
+            socketio.emit('my response',
+                {'data': response, 'count': item[0]},
                 namespace='/test')
 
 
@@ -215,4 +203,3 @@ if __name__ == '__main__':
         thread.start()
 
     socketio.run(app, host='0.0.0.0', debug=True)
-

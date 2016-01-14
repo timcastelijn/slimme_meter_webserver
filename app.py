@@ -62,28 +62,38 @@ def background_thread():
     time.sleep(4)
 
     p1_raw = "/n"
+    last_save = 0
     while True:
 
         line = ser.readline()
-
+	store_values = False
+	
         if line:
 
             parsed_line = None
-            localtime = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+            localtime = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
 
             line = line.strip()
             prefix = 'last'
-
+	
+	    if (last_save + 1800)>time.clock():
+		store_values = True
+		last_save = time.clock()
 
             if "1-0:1.8.1" in line:
                 value = re.search("\(([0-9.]+)\*k", line).group(1)
 		if value:
-		     print float(value)
    	             parsed_line = "verbuik totaal dal: %s" % value
    	             db.Put('%s/usage_total_low'%prefix,value)
+		     if store_values:
+                        db.Put('data/usage_total_low/%s'%localtime,value)
             elif "1-0:1.8.2" in line:
-                parsed_line = "verbruik totaal piek: %s"% (line[10:20])
-                db.Put('%s/usage_total_high'%prefix,(line[10:20]))
+                value = re.search("\(([0-9.]+)\*k", line).group(1)
+                if value:
+                     parsed_line = "verbruik totaal piek: %s"% value
+                     db.Put('%s/usage_total_high'%prefix,value)
+                     if store_values:
+                        db.Put('data/usage_total_high/%s'%localtime,value)
             elif "1-0:2.8.1" in line:
                 parsed_line = "teruggeleverd dal: %s"% (line[10:20])
                 db.Put('%s/returned_total_low'%prefix,(line[10:20]))

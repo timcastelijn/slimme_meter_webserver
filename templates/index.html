@@ -16,18 +16,18 @@
             // event handler for server sent data
             // the data is displayed in the "Received" section of the page
             socket.on('my response', function(msg) {
-		var r = new Array(), j = -1;
-		r[++j] ='<table class="table">';
-		for (key in msg.data){
-		  r[++j] ='<tr><td>';
-   		  r[++j] = key;
-   		  r[++j] = '</td><td class="whatever1">';
-   		  r[++j] = msg.data[key];
-   		  r[++j] = '</td></tr>';
- 		}
-                r[++j] = '</table">';
- 		$('#log').html(r.join('')); 
-	    });
+          		var r = new Array(), j = -1;
+          		r[++j] ='<table class="table">';
+          		for (key in msg.data){
+          		  r[++j] ='<tr><td>';
+             		  r[++j] = key;
+             		  r[++j] = '</td><td class="whatever1">';
+             		  r[++j] = msg.data[key];
+             		  r[++j] = '</td></tr>';
+           		}
+                          r[++j] = '</table">';
+           		$('#log').html(r.join(''));
+	          });
 
             // event handler for new connections
             socket.on('connect', function() {
@@ -102,7 +102,7 @@
 
     <h2>Live data</h2>
     <div id="log"></div>
+    <div id="graph"></div>
   </div>
 </body>
 </html>
-

@@ -29,10 +29,21 @@
            		$('#log').html(r.join(''));
 	          });
 
-            // event handler for new connections
-            socket.on('connect', function() {
-                socket.emit('my event', {data: 'I\'m connected!'});
-            });
+            socket.on('my response2', function(msg) {
+              console.log("usage_low");
+          		for (key in msg.data.usage_low){
+          		  console.log(key, msg.data.usage_low[key]);
+           		}
+              console.log("usage high");
+          		for (key in msg.data.usage_high){
+          		  console.log(key, msg.data.usage_high[key]);
+           		}
+	          });
+
+            // // event handler for new connections
+            // socket.on('connect', function() {
+            //     socket.emit('my event', {data: 'I\'m connected!'});
+            // });
 
             // handlers for the different forms in the page
             // these send data to the server in a variety of ways

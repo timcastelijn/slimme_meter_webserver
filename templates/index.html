@@ -2,11 +2,66 @@
 <html>
 <head>
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.6.1/css/bootstrap-datepicker.css">
     <title>Flask-SocketIO Test</title>
-    <script type="text/javascript" src="//code.jquery.com/jquery-1.4.2.min.js"></script>
+    <script
+    			  src="https://code.jquery.com/jquery-1.12.4.js"
+    			  integrity="sha256-Qw82+bXyGq6MydymqBxNPYTaUXXq7c8v3CwiYwLLNXU="
+    			  crossorigin="anonymous"></script>    <script type="text/javascript" src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
     <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/1.3.5/socket.io.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.6.1/js/bootstrap-datepicker.min.js"></script>
     <script type="text/javascript" charset="utf-8">
         $(document).ready(function(){
+
+          var dp1 = $('#datepicker').datepicker();
+
+          var dp2 = $('#datepicker2').datepicker();
+
+          $('.datepicker').on('changeDate', function(e){
+            console.log(dp1.datepicker('getDate'));
+            console.log(dp2.datepicker('getDate'));
+          })
+
+          $('#datepicker').on('changeDate', function(e){
+            console.log(dp1.datepicker('getDate'));
+            console.log(dp2.datepicker('getDate'));
+          })
+
+          var date = new Date()
+
+          $("#emit_data").val( [date.getFullYear(), date.getMonth(), date.getDate()-3, date.getHours()].join('/') );
+          $("#request_end_data").val( [date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()].join('/') );
+
+
+          // db = {
+          //   a
+          //   aa
+          //   aa1
+          //   b
+          //   bb
+          //   bb1
+          // }
+          // from:a to:b => a, aa, aa1, b, bb, bb1
+
+          var test_data = {
+            "last/usage_total_low": '1037.1',
+            "last/usage_total_high": '1022.1',
+            'last/returned_total_high':'0',
+            'last/returned_total_low':'0',
+            'last/usage_current':'0.13',
+            'last/returned_current':'0',
+            'last/usage_total_gas':'1007',
+            'usage_low/day/2016/6/12/11':'3.4',
+            'usage_low/hour/2016/6/12/11/':'.2',
+            'usage_low/hour/2016/6/12/12/':'.3',
+            'usage_low/hour/2016/6/12/13/':'.31',
+            'usage_low/hour/2016/6/12/14/':'.29',
+            'usage_low/hour/2016/6/12/15/':'.32',
+            'usage_low/hour/2016/6/12/16/':'.28',
+          }
+
+          $("#fill_data").val( JSON.stringify(test_data) );
+
             namespace = '/test'; // change to an empty string to use the global namespace
 
             // the socket.io documentation recommends sending an explicit package upon connection
@@ -29,6 +84,10 @@
            		$('#log').html(r.join(''));
 	          });
 
+            socket.on('response', function(msg) {
+          	   console.log(msg.data);
+	          });
+
             socket.on('my response2', function(msg) {
               console.log("usage_low");
           		for (key in msg.data.usage_low){
@@ -40,27 +99,34 @@
            		}
 	          });
 
-            // // event handler for new connections
-            // socket.on('connect', function() {
-            //     socket.emit('my event', {data: 'I\'m connected!'});
-            // });
-
-            // handlers for the different forms in the page
-            // these send data to the server in a variety of ways
             $('form#emit').submit(function(event) {
-                socket.emit('my event', {data: $('#emit_data').val()});
+
+                var $selected = $('input[name="optradio"]:checked', '#emit');
+                console.log($selected);
+                var range = {
+                  id:$selected.val(),
+                  start:$('#emit_data').val(),
+                  end:$('#request_end_data').val()
+                }
+                console.log(range);
+
+
+                socket.emit('dataRequest', {data: range});
                 return false;
             });
-            $('form#broadcast').submit(function(event) {
-                socket.emit('my broadcast event', {data: $('#broadcast_data').val()});
+
+            $('form#Clear').submit(function(event) {
+                console.log("clear");
+                socket.emit('clearDataBase');
                 return false;
             });
-            $('form#join').submit(function(event) {
-                socket.emit('join', {room: $('#join_room').val()});
+
+            $('form#fill').submit(function(event) {
+                socket.emit('fillDataBase', {data: $('#fill_data').val()});
                 return false;
             });
-            $('form#leave').submit(function(event) {
-                socket.emit('leave', {room: $('#leave_room').val()});
+            $('form#dump').submit(function(event) {
+                socket.emit('dumpDataBase');
                 return false;
             });
             $('form#send_room').submit(function(event) {
@@ -83,33 +149,37 @@
     <h1>Flask-SocketIO Test</h1>
     <h2>Send:</h2>
     <form id="emit" method="POST" action='#'>
-        <input type="text" name="emit_data" id="emit_data" placeholder="Message">
-        <input type="submit" value="Echo">
+        <input type="text" name="emit_data" id="emit_data">
+        <input type="text" name="request_end_data" id="request_end_data">
+        <label class="radio-inline">
+          <input id="hour" type="radio" checked='checked' value='hour' name="optradio">hour
+        </label>
+        <label class="radio-inline">
+          <input type="radio"  value='day' name="optradio">day
+        </label>
+        <label class="radio-inline">
+          <input type="radio"  value='month' name="optradio">month
+        </label>
+        <input type="submit" value="send request">
     </form>
-    <form id="broadcast" method="POST" action='#'>
-        <input type="text" name="broadcast_data" id="broadcast_data" placeholder="Message">
-        <input type="submit" value="Broadcast">
+    <form id="Clear" method="POST" action='#'>
+        <input type="submit" value="Clear" />
     </form>
-    <form id="join" method="POST" action='#'>
-        <input type="text" name="join_room" id="join_room" placeholder="Room Name">
-        <input type="submit" value="Join Room">
+    <form id="fill" method="POST" action='#'>
+        <textarea rows="4" cols="25" name="fill_data" id="fill_data" placeholder="Room Name"></textarea>
+        <input type="submit" value="Fill database">
     </form>
-    <form id="leave" method="POST" action='#'>
-        <input type="text" name="leave_room" id="leave_room" placeholder="Room Name">
-        <input type="submit" value="Leave Room">
+    <form id="dump" method="POST" action='#'>
+        <input type="submit" value="dump database">
     </form>
-    <form id="send_room" method="POST" action='#'>
-        <input type="text" name="room_name" id="room_name" placeholder="Room Name">
-        <input type="text" name="room_data" id="room_data" placeholder="Message">
-        <input type="submit" value="Send to Room">
-    </form>
-    <form id="close" method="POST" action="#">
-        <input type="text" name="close_room" id="close_room" placeholder="Room Name">
-        <input type="submit" value="Close Room">
-    </form>
-    <form id="disconnect" method="POST" action="#">
-        <input type="submit" value="Disconnect">
-    </form>
+
+    <div class="container">
+        <div class'datepicker' id="datepicker" data-date="-1m" style="display: inline-block"><h2>start</h2></div>
+        <div class'datepicker' id="datepicker2" data-date="0d" style="display: inline-block"><h2>end</h2></div>
+    </div>
+
+
+
 
     <h2>Live data</h2>
     <div id="log"></div>

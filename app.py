@@ -56,6 +56,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room, \
 import serial
 import leveldb
 import re
+import ast
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -118,7 +119,7 @@ def storeValues(values):
                     localtime = time.strftime(item['timestring'], time.localtime())
 
                     # store value in db
-                    db.Put("%s/%s"%(cat, localtime), str(value) )
+                    db.Put("%s/%s/%s"%(cat, item['id'], localtime ), str(value) )
                 except:
                     previous[cat][ item['id'] ] = current
                     print "no previous available yet"
@@ -129,127 +130,127 @@ def storeValues(values):
 
 
 def background_thread():
-    """Example of how to send server generated events to clients."""
-    # ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=5)
-    ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=20)
-
     # create database
     global db
     db = leveldb.LevelDB('./db')
 
-    last_save = 0
+    try:
+        """Example of how to send server generated events to clients."""
+        # ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=5)
+        ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=20)
+
+        last_save = 0
 
 
-    # wiat a bit
-    time.sleep(4)
+        # wiat a bit
+        time.sleep(4)
 
-    count = 0
+        count = 0
 
-    while True:
+        while True:
 
-        # read 811 chars or flush after timeout
-        text = ser.read(811);
+            # read 811 chars or flush after timeout
+            text = ser.read(811);
 
-        ser.flush();
+            ser.flush();
 
-        # print "len: " +str(len(text))
+            # print "len: " +str(len(text))
 
-        if len(text) == 811:
+            if len(text) == 811:
 
-            # print text
+                # print text
 
-            # try to find codes in text and get values
-            response = {}
-            for item in codes:
-                match = re.search(item['code']+".*\(([0-9.]+)\*", text)
-                if match:
-                    value = match.group(1)
-                    print item['id'] + " - " + value;
-                    db.Put('last/%s'%item['id'], value);
+                # try to find codes in text and get values
+                response = {}
+                for item in codes:
+                    match = re.search(item['code']+".*\(([0-9.]+)\*", text)
+                    if match:
+                        value = match.group(1)
+                        print item['id'] + " - " + value;
+                        db.Put('last/%s'%item['id'], value);
 
-                    response[ item['id'] ] = value;
-                else:
-                    print item['id'] + " no value found"
+                        response[ item['id'] ] = value;
+                    else:
+                        print item['id'] + " no value found"
 
-            storeValues(response);
+                storeValues(response);
 
-            socketio.emit('my response', {
-                'data': response,
-                'count': len(response)
-            },namespace='/test')
-        else:
-            print 'incomplete'
-            print text
+                socketio.emit('dataBroadcast', {
+                    'data': response
+                },namespace='/test')
+
+            else:
+                print 'incomplete'
+                print text
+    except:
+        print "no serial port found"
 
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@socketio.on('my event', namespace='/test')
+@socketio.on('dataRequest', namespace='/test')
 def test_message(message):
-    print 'my event' + message
+    print 'dataRequest', message
+
+    start = message['data']['start']
+    end = message['data']['end']
+    id = message['data']['id']
 
     global db
 
     usage_low = {}
     usage_high = {}
-    for item in db.RangeIter(key_from = 'usage_low', key_to = 'usage_low~'):
+    for item in db.RangeIter(key_from = 'usage_low/%s/%s'%(id,start), key_to = 'usage_low/%s/%s'%(id,end)):
         usage_low[item[0]] = item[1];
 
-    for item in db.RangeIter(key_from = 'usage_high', key_to = 'usage_high~'):
+    for item in db.RangeIter(key_from = 'usage_high/%s/%s'%(id,start), key_to = 'usage_high/%s/%s'%(id,end)):
+        key = item[0].split('/')[-1]
         usage_high[item[0]] = item[1];
 
     emit('my response2',
             {'data': {'usage_low':usage_low, 'usage_high':usage_high}})
 
-@socketio.on('my broadcast event', namespace='/test')
-def test_broadcast_message(message):
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': message['data'], 'count': session['receive_count']},
-         broadcast=True)
+
+@socketio.on('clearDataBase', namespace='/test')
+def test_message():
+    print 'clear DB'
+
+    global db
+
+    for item in db.RangeIter(key_from = '', key_to = '~'):
+        print item[0];
+        db.Delete( item[0] );
+
+@socketio.on('fillDataBase', namespace='/test')
+def test_message(message):
+    print 'fill DB', message['data']
+
+    data = ast.literal_eval(message['data'])
+    global db
+
+    count = 0
+    for item in data:
+        # print item, data[item]
+        db.Put(item, data[item]);
+        count = count + 1
+
+    emit('response',
+        {'data': "filled db with: " + str(count) + " elements"})
 
 
-@socketio.on('join', namespace='/test')
-def join(message):
-    join_room(message['room'])
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': 'In rooms: ' + ', '.join(rooms()),
-          'count': session['receive_count']})
+@socketio.on('dumpDataBase', namespace='/test')
+def test_dump():
+    print 'dump DB'
 
-@socketio.on('leave', namespace='/test')
-def leave(message):
-    leave_room(message['room'])
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': 'In rooms: ' + ', '.join(rooms()),
-          'count': session['receive_count']})
+    global db
 
+    for item in db.RangeIter(key_from = '', key_to = '~'):
+        print item[0], item[1];
+        emit('response',
+            {'data': item[0] + " : " + item[1]})
 
-@socketio.on('close room', namespace='/test')
-def close(message):
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response', {'data': 'Room ' + message['room'] + ' is closing.',
-                         'count': session['receive_count']},
-         room=message['room'])
-    close_room(message['room'])
-
-
-@socketio.on('my room event', namespace='/test')
-def send_room_message(message):
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': message['data'], 'count': session['receive_count']},
-         room=message['room'])
-
-@socketio.on('disconnect request', namespace='/test')
-def disconnect_request():
-    session['receive_count'] = session.get('receive_count', 0) + 1
-    emit('my response',
-         {'data': 'Disconnected!', 'count': session['receive_count']})
-    disconnect()
 
 
 @socketio.on('connect', namespace='/test')
@@ -257,17 +258,10 @@ def test_connect():
     print "connected"
     global db
 
-    response = {'usage_total_low':0,
-                'usage_total_high':0,
-                'returned_total_low':0,
-                'usage_current':0,
-                'returned_total_high':0,
-                'usage_total_gas':0,
-                'returned_current':0}
-
+    response = {}
     for item in db.RangeIter(key_from = 'last', key_to = 'last~'):
-        print item
-        response[item[0]] = item[1]
+        key = item[0].split('/')[-1]
+        response[key] = item[1]
 
     emit('my response',
             {'data': response})
@@ -279,7 +273,7 @@ def test_disconnect():
 
 
 if __name__ == '__main__':
-    global thread
+    # global thread
     if thread is None:
         thread = Thread(target=background_thread)
         thread.daemon = True
